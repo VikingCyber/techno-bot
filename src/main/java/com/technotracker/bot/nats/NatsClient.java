@@ -1,5 +1,6 @@
 package com.technotracker.bot.nats;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.technotracker.bot.config.NatsConfig;
 import com.technotracker.bot.model.EquipmentRequest;
@@ -17,15 +18,17 @@ import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 @Component
 public class NatsClient {
     private static final Logger logger = LoggerFactory.getLogger(NatsClient.class);
-    
+
     private final NatsConfig natsConfig;
     private final ObjectMapper objectMapper;
     private Connection connection;
@@ -72,19 +75,18 @@ public class NatsClient {
     /**
      * Публикует запрос на получение оборудования
      */
-    public void publishEquipmentRequest(EquipmentRequest request) {
-        try {
-            String json = objectMapper.writeValueAsString(request);
-            if (jetStream == null) {
-                logger.warn("JetStream is not available - skipping publish of equipment request: {}", request);
-                return;
-            }
-
-            jetStream.publish(natsConfig.getRequestSubject(), json.getBytes(StandardCharsets.UTF_8));
-            logger.info("Published equipment request: {}", request);
-        } catch (IOException | JetStreamApiException e) {
-            logger.error("Failed to publish equipment request", e);
+    public void publishEquipmentRequest(EquipmentRequest request) throws JsonProcessingException {
+        String json = objectMapper.writeValueAsString(request);
+        if (connection == null) {
+            logger.warn("Nats connection is not available - skipping publish of equipment request: {}", request);
+            return;
         }
+
+        connection.request(natsConfig.getRequestCreatedSubject(), json.getBytes(StandardCharsets.UTF_8)).
+                thenAccept(response -> {
+                    logger.info("Received response for equipment request: {}", new String(response.getData(), StandardCharsets.UTF_8));
+                });
+        logger.info("Published equipment request: {}", request);
     }
 
     /**
@@ -92,11 +94,11 @@ public class NatsClient {
      */
     private void subscribeToStatusUpdates() {
         try {
-        io.nats.client.PushSubscribeOptions subscribeOptions = io.nats.client.PushSubscribeOptions.builder()
-            .durable("telegram-bot-subscriber")
-            .build();
+            io.nats.client.PushSubscribeOptions subscribeOptions = io.nats.client.PushSubscribeOptions.builder()
+                    .durable("telegram-bot-subscriber")
+                    .build();
 
-        subscription = jetStream.subscribe(natsConfig.getSubject() + ".status", subscribeOptions);
+            subscription = jetStream.subscribe(natsConfig.getSubject() + ".status", subscribeOptions);
             logger.info("Subscribed to status updates on subject: {}", natsConfig.getSubject() + ".status");
         } catch (IOException | JetStreamApiException e) {
             logger.error("Failed to subscribe to status updates", e);
@@ -110,18 +112,22 @@ public class NatsClient {
         new Thread(() -> {
             try {
                 while (connection != null && connection.getStatus() == Connection.Status.CONNECTED) {
-                    if (subscription != null) {
-                        Message msg = subscription.nextMessage(Duration.ofSeconds(1));
-                        if (msg != null) {
-                            try {
-                                String json = new String(msg.getData(), StandardCharsets.UTF_8);
-                                EquipmentStatus status = objectMapper.readValue(json, EquipmentStatus.class);
-                                handler.accept(status);
-                                msg.ack();
-                            } catch (Exception e) {
-                                logger.error("Error processing status update", e);
-                            }
-                        }
+                    if (subscription == null) {
+                        continue;
+                    }
+
+                    Message msg = subscription.nextMessage(Duration.ofSeconds(1));
+                    if (msg == null) {
+                        continue;
+                    }
+
+                    try {
+                        String json = new String(msg.getData(), StandardCharsets.UTF_8);
+                        EquipmentStatus status = objectMapper.readValue(json, EquipmentStatus.class);
+                        handler.accept(status);
+                        msg.ack();
+                    } catch (Exception e) {
+                        logger.error("Error processing status update", e);
                     }
                 }
             } catch (InterruptedException e) {
@@ -135,9 +141,9 @@ public class NatsClient {
      * Проверяет, подключен ли NATS
      */
     public boolean isConnected() {
-        return connection != null 
-            && connection.getStatus() == Connection.Status.CONNECTED
-            && jetStream != null;
+        return connection != null
+                && connection.getStatus() == Connection.Status.CONNECTED
+                && jetStream != null;
     }
 
     @PreDestroy

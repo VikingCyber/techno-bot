@@ -17,17 +17,17 @@ import java.util.regex.Pattern;
 
 public class MessageHandler {
     private static final Logger logger = LoggerFactory.getLogger(MessageHandler.class);
-    
+
     private final TelegramLongPollingBot bot;
     private final NatsClient natsClient;
-    
+
     // Паттерны для парсинга запроса
     private static final Pattern REQUEST_PATTERN = Pattern.compile(
-        "(?i)запрос[:\\.]?\\s*(.+)", Pattern.MULTILINE);
+            "(?i)запрос[:\\.]?\\s*(.+)", Pattern.MULTILINE);
     private static final Pattern LOCATION_PATTERN = Pattern.compile(
-        "(?i)локация[:\\.]?\\s*(.+)", Pattern.MULTILINE);
+            "(?i)локация[:\\.]?\\s*(.+)", Pattern.MULTILINE);
     private static final Pattern COMMENT_PATTERN = Pattern.compile(
-        "(?i)комментарий[:\\.]?\\s*(.+)", Pattern.MULTILINE);
+            "(?i)комментарий[:\\.]?\\s*(.+)", Pattern.MULTILINE);
 
     public MessageHandler(TelegramLongPollingBot bot, NatsClient natsClient) {
         this.bot = bot;
@@ -38,23 +38,23 @@ public class MessageHandler {
         Message message = update.getMessage();
         String text = message.getText();
         Long chatId = message.getChatId();
-        
+
         // Пытаемся распарсить запрос на оборудование
         EquipmentRequest request = parseEquipmentRequest(text, message);
-        
+
         if (request != null) {
             processEquipmentRequest(request, chatId);
         } else {
             sendMessage(chatId, """
-                ❓ Не удалось распознать запрос.
-                
-                Используйте формат:
-                <code>Запрос: [название оборудования]
-                Локация: [ваша локация]
-                Комментарий: [дополнительная информация]</code>
-                
-                Или используйте команду /help для справки.
-                """);
+                    ❓ Не удалось распознать запрос.
+                    
+                    Используйте формат:
+                    <code>Запрос: [название оборудования]
+                    Локация: [ваша локация]
+                    Комментарий: [дополнительная информация]</code>
+                    
+                    Или используйте команду /help для справки.
+                    """);
         }
     }
 
@@ -63,9 +63,9 @@ public class MessageHandler {
      */
     private EquipmentRequest parseEquipmentRequest(String text, Message message) {
         try {
-            Matcher requestMatcher = REQUEST_PATTERN.matcher(text);
-            Matcher locationMatcher = LOCATION_PATTERN.matcher(text);
-            Matcher commentMatcher = COMMENT_PATTERN.matcher(text);
+            Matcher requestMatcher = REQUEST_PATTERN.matcher(text.toLowerCase());
+            Matcher locationMatcher = LOCATION_PATTERN.matcher(text.toLowerCase());
+            Matcher commentMatcher = COMMENT_PATTERN.matcher(text.toLowerCase());
 
             String equipmentName = null;
             String location = null;
@@ -87,16 +87,15 @@ public class MessageHandler {
             }
 
             return new EquipmentRequest(
-                (long) message.getFrom().getId(),
-                message.getFrom().getUserName() != null 
-                    ? message.getFrom().getUserName() 
-                    : message.getFrom().getFirstName(),
-                null, // equipmentId будет установлен системой
-                equipmentName,
-                location,
-                comment,
-                LocalDateTime.now(),
-                UUID.randomUUID().toString()
+                    message.getFrom().getId(),
+                    message.getFrom().getUserName() != null
+                            ? message.getFrom().getUserName()
+                            : message.getFrom().getFirstName(),
+                    equipmentName,
+                    location,
+                    comment,
+                    LocalDateTime.now().toString(),
+                    location
             );
         } catch (Exception e) {
             logger.error("Error parsing equipment request", e);
@@ -116,29 +115,27 @@ public class MessageHandler {
             } else {
                 logger.info("NATS not connected - running in demo mode. Request: {}", request);
             }
-            
+
             // Подтверждаем пользователю
             String confirmation = String.format("""
-                ✅ Запрос успешно создан!
-                
-                ID заявки: <code>%s</code>
-                Оборудование: %s
-                Локация: %s
-                %s
-                
-                %s
-                """,
-                request.getRequestId(),
-                request.getEquipmentName(),
-                request.getLocation() != null ? request.getLocation() : "Не указана",
-                request.getComment() != null 
-                    ? "Комментарий: " + request.getComment() 
-                    : "",
-                natsConnected 
-                    ? "Ваш запрос отправлен администратору. Вы получите уведомление при изменении статуса."
-                    : "⚠️ Режим демонстрации: NATS не подключен. Запрос сохранен локально."
+                            ✅ Запрос успешно создан!
+                            
+                            Оборудование: %s
+                            Локация: %s
+                            %s
+                            
+                            %s
+                            """,
+                    request.getEquipmentName(),
+                    request.getLocation() != null ? request.getLocation() : "Не указана",
+                    request.getComment() != null
+                            ? "Комментарий: " + request.getComment()
+                            : "",
+                    natsConnected
+                            ? "Ваш запрос отправлен администратору. Вы получите уведомление при изменении статуса."
+                            : "⚠️ Режим демонстрации: NATS не подключен. Запрос сохранен локально."
             );
-            
+
             sendMessage(chatId, confirmation);
             logger.info("Equipment request processed: {}", request);
         } catch (Exception e) {
