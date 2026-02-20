@@ -1,103 +1,100 @@
 package com.technotracker.bot.model;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Getter;
+import lombok.Setter;
 
-import java.time.LocalDateTime;
+import java.util.List;
 
+/**
+ * Модель заявки согласно контракту сервиса Requests (domain.Request).
+ * Используется как при создании заявки, так и при получении статуса.
+ */
+@Getter
+@Setter
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class EquipmentStatus {
-    @JsonProperty("request_id")
-    private String requestId;
-    
-    @JsonProperty("equipment_id")
-    private Long equipmentId;
-    
-    @JsonProperty("equipment_name")
-    private String equipmentName;
-    
+
+    @JsonProperty("id")
+    private String id;
+
+    @JsonProperty("request_text")
+    private String requestText;
+
+    /** pending | assigned | in_progress | completed | canceled | rejected */
     @JsonProperty("status")
-    private String status; // PENDING, APPROVED, REJECTED, IN_DELIVERY, DELIVERED
-    
-    @JsonProperty("user_id")
-    private Long userId;
-    
-    @JsonProperty("message")
-    private String message;
-    
-    @JsonProperty("updated_at")
-    private LocalDateTime updatedAt;
-    
-    public EquipmentStatus() {
+    private String status;
+
+    @JsonProperty("schedule_time")
+    private String scheduleTime;
+
+    @JsonProperty("end_time")
+    private String endTime;
+
+    @JsonProperty("address")
+    private String address;
+
+    @JsonProperty("responsible_user_id")
+    private String responsibleUserId;
+
+    @JsonProperty("equipment")
+    private List<RequestEquipmentItem> equipment;
+
+    @JsonProperty("audit")
+    private Audit audit;
+
+    // ---- Вспомогательное отображение статуса в текст ----
+    public String statusLabel() {
+        if (status == null) return "—";
+        return switch (status) {
+            case "pending"     -> "⏳ Ожидает";
+            case "assigned"    -> "👤 Назначена";
+            case "in_progress" -> "🔄 В работе";
+            case "completed"   -> "✅ Выполнена";
+            case "canceled"    -> "❌ Отменена";
+            case "rejected"    -> "🚫 Отклонена";
+            default            -> status;
+        };
     }
-    
-    public EquipmentStatus(String requestId, Long equipmentId, String equipmentName, String status, Long userId, String message, LocalDateTime updatedAt) {
-        this.requestId = requestId;
-        this.equipmentId = equipmentId;
-        this.equipmentName = equipmentName;
-        this.status = status;
-        this.userId = userId;
-        this.message = message;
-        this.updatedAt = updatedAt;
+
+    @Getter
+    @Setter
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class RequestEquipmentItem {
+        @JsonProperty("request_id")
+        private String requestId;
+
+        @JsonProperty("equipment_id")
+        private Integer equipmentId;
+
+        @JsonProperty("quantity")
+        private Integer quantity;
+
+        @JsonProperty("created_at")
+        private String createdAt;
+
+        @JsonProperty("updated_at")
+        private String updatedAt;
     }
-    
-    public String getRequestId() {
-        return requestId;
-    }
-    
-    public void setRequestId(String requestId) {
-        this.requestId = requestId;
-    }
-    
-    public Long getEquipmentId() {
-        return equipmentId;
-    }
-    
-    public void setEquipmentId(Long equipmentId) {
-        this.equipmentId = equipmentId;
-    }
-    
-    public String getEquipmentName() {
-        return equipmentName;
-    }
-    
-    public void setEquipmentName(String equipmentName) {
-        this.equipmentName = equipmentName;
-    }
-    
-    public String getStatus() {
-        return status;
-    }
-    
-    public void setStatus(String status) {
-        this.status = status;
-    }
-    
-    public Long getUserId() {
-        return userId;
-    }
-    
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
-    
-    public String getMessage() {
-        return message;
-    }
-    
-    public void setMessage(String message) {
-        this.message = message;
-    }
-    
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-    
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
+
+    @Getter
+    @Setter
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Audit {
+        @JsonProperty("created_at")
+        private String createdAt;
+
+        @JsonProperty("updated_at")
+        private String updatedAt;
+
+        @JsonProperty("created_by")
+        private String createdBy;
+
+        @JsonProperty("updated_by")
+        private String updatedBy;
+
+        @JsonProperty("deleted_at")
+        private String deletedAt;
     }
 }
-
-
-
-
-
-

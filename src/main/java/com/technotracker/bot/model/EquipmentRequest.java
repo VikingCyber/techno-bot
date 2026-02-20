@@ -4,84 +4,80 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.util.List;
+
+@Getter
+@Setter
 public class EquipmentRequest {
-    @JsonProperty("user_id")
-    private Long userId;
 
-    @JsonProperty("user_name")
-    private String userName;
-
-    @Getter
-    @JsonProperty("equipment_string")
-    private String equipmentName;
-
-    @Getter
-    @JsonProperty("location")
-    private String location;
-
-    @Getter
+    /** Свободный текст описания заявки (=comment) */
     @JsonProperty("text")
-    private String comment;
+    private String text;
 
-    @Getter
+    /** Строковое описание оборудования (если без справочника) */
+    @JsonProperty("equipment_string")
+    private String equipmentString;
+
+    /** Время проведения (строка, не RFC3339) */
+    @JsonProperty("schedule_time")
+    private String scheduleTime;
+
+    /** Адрес / локация */
     @JsonProperty("address")
     private String address;
 
-    @JsonProperty("schedule_time")
-    private String requestDate;
+    /** Telegram user id */
+    @JsonProperty("user_id")
+    private Long userId;
 
-    public EquipmentRequest() {
-    }
+    /** Telegram username */
+    @JsonProperty("user_name")
+    private String userName;
 
-    public EquipmentRequest(Long userId, String userName, String equipmentName, String location, String comment, String requestDate, String address) {
+    /** Список оборудования из справочника (может быть пустым) */
+    @JsonProperty("equipments")
+    private List<EquipmentItem> equipments;
+
+    public EquipmentRequest() {}
+
+    /** Короткий конструктор для создания заявки из текстового сообщения */
+    public EquipmentRequest(Long userId, String userName, String equipmentString,
+                            String address, String text, String scheduleTime) {
         this.userId = userId;
         this.userName = userName;
-        this.equipmentName = equipmentName;
-        this.location = location;
-        this.comment = comment;
-        this.requestDate = requestDate;
+        this.equipmentString = equipmentString;
         this.address = address;
+        this.text = text;
+        this.scheduleTime = scheduleTime;
+        this.equipments = List.of();
     }
 
-    public Long getUserId() {
-        return userId;
+    // Backward-compat helpers used in MessageHandler
+    public String getEquipmentName()  { return equipmentString; }
+    public String getLocation()       { return address; }
+    public String getComment()        { return text; }
+
+    @Override
+    public String toString() {
+        return "EquipmentRequest{userId=" + userId + ", equipmentString='" + equipmentString
+                + "', address='" + address + "', scheduleTime='" + scheduleTime + "'}";
     }
 
-    public void setUserId(Long userId) {
-        this.userId = userId;
-    }
+    // ---- вложенный класс элемента оборудования ----
+    @Getter
+    @Setter
+    public static class EquipmentItem {
+        @JsonProperty("id")
+        private Integer id;
 
-    public String getUserName() {
-        return userName;
-    }
+        @JsonProperty("quantity")
+        private Integer quantity;
 
-    public void setUserName(String userName) {
-        this.userName = userName;
-    }
+        public EquipmentItem() {}
 
-    public void setEquipmentName(String equipmentName) {
-        this.equipmentName = equipmentName;
-    }
-
-    public void setLocation(String location) {
-        this.location = location;
-    }
-
-    public void setComment(String comment) {
-        this.comment = comment;
-    }
-
-    public String getRequestDate() {
-        return requestDate;
-    }
-
-    public void setRequestDate(String requestDate) {
-        this.requestDate = requestDate;
+        public EquipmentItem(Integer id, Integer quantity) {
+            this.id = id;
+            this.quantity = quantity;
+        }
     }
 }
-
-
-
-
-
-

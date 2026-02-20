@@ -31,9 +31,6 @@ public class TechnoTrackerBot extends TelegramLongPollingBot {
         this.commandHandler = new CommandHandler(this, natsClient);
         this.messageHandler = new MessageHandler(this, natsClient);
         this.callbackHandler = new CallbackHandler(this, natsClient);
-        
-        // Подписываемся на обновления статуса оборудования
-        setupStatusUpdates();
     }
 
     @Override
@@ -67,48 +64,36 @@ public class TechnoTrackerBot extends TelegramLongPollingBot {
     }
 
     /**
-     * Настраивает обработку обновлений статуса оборудования из NATS
+     * Отправляет уведомление об изменении статуса заявки.
+     * Вызывается внешним компонентом (например, при входящем Pub/Sub событии).
+     *
+     * @param status  объект заявки из контракта
+     * @param chatId  Telegram chat id получателя
      */
-    private void setupStatusUpdates() {
-        // Подписываемся на обновления только если NATS подключен
-        if (natsClient.isConnected()) {
-            natsClient.setStatusUpdateHandler(status -> {
-                try {
-                    sendStatusUpdate(status);
-                } catch (Exception e) {
-                    logger.error("Error sending status update", e);
-                }
-            });
-        } else {
-            logger.info("NATS not connected - status updates disabled (demo mode)");
-        }
-    }
-
-    /**
-     * Отправляет уведомление пользователю об изменении статуса оборудования
-     */
-    private void sendStatusUpdate(EquipmentStatus status) {
+    public void sendStatusUpdate(EquipmentStatus status, Long chatId) {
         String message = String.format(
-            "📦 Обновление статуса оборудования\n\n" +
-            "Оборудование: %s\n" +
-            "Статус: %s\n" +
-            "Время: %s\n\n" +
-            "%s",
-            status.getEquipmentName(),
-            formatStatus(status.getStatus()),
-            status.getUpdatedAt(),
-            status.getMessage() != null ? status.getMessage() : ""
+            "📦 <b>Обновление статуса заявки</b>\n\n" +
+            "🆔 ID: <code>%s</code>\n" +
+            "📝 Описание: %s\n" +
+            "📍 Адрес: %s\n" +
+            "📅 Время: %s\n" +
+            "Статус: %s",
+            status.getId(),
+            status.getRequestText() != null ? status.getRequestText() : "—",
+            status.getAddress() != null ? status.getAddress() : "—",
+            status.getScheduleTime() != null ? status.getScheduleTime() : "—",
+            status.statusLabel()
         );
 
         SendMessage sendMessage = new SendMessage();
-        sendMessage.setChatId(status.getUserId().toString());
+        sendMessage.setChatId(chatId.toString());
         sendMessage.setText(message);
         sendMessage.setParseMode("HTML");
 
         try {
             execute(sendMessage);
         } catch (TelegramApiException e) {
-            logger.error("Failed to send status update to user {}", status.getUserId(), e);
+            logger.error("Failed to send status update to chat {}", chatId, e);
         }
     }
 
@@ -127,19 +112,6 @@ public class TechnoTrackerBot extends TelegramLongPollingBot {
         }
     }
 
-    /**
-     * Форматирует статус для отображения
-     */
-    private String formatStatus(String status) {
-        return switch (status.toUpperCase()) {
-            case "PENDING" -> "⏳ Ожидает рассмотрения";
-            case "APPROVED" -> "✅ Одобрено";
-            case "REJECTED" -> "❌ Отклонено";
-            case "IN_DELIVERY" -> "🚚 В доставке";
-            case "DELIVERED" -> "✓ Доставлено";
-            default -> status;
-        };
-    }
 }
 
 
