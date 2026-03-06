@@ -5,12 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.technotracker.bot.config.NatsConfig;
 import com.technotracker.bot.model.EquipmentRequest;
 import com.technotracker.bot.model.EquipmentStatus;
+import com.technotracker.bot.model.RequestUpdatedEvent;
 import io.nats.client.Connection;
 import io.nats.client.JetStream;
 import io.nats.client.JetStreamApiException;
 import io.nats.client.JetStreamSubscription;
 import io.nats.client.Message;
 import io.nats.client.Nats;
+import io.nats.client.Subscription;
 import io.nats.client.Options;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +36,8 @@ public class NatsClient {
     private Connection connection;
     private JetStream jetStream;
     private JetStreamSubscription subscription;
+    private Subscription subscriptionRequestsUpdated;
+    private volatile Consumer<RequestUpdatedEvent> requestsUpdatedHandler;
 
     public NatsClient(NatsConfig natsConfig) {
         this.natsConfig = natsConfig;
@@ -65,6 +69,9 @@ public class NatsClient {
 
             // Подписка на уведомления о статусе оборудования
             subscribeToStatusUpdates();
+            // Подписка на обновления запросов (requests.updated)
+            subscriptionRequestsUpdated = connection.subscribe(natsConfig.getRequestsUpdatedSubject());
+            logger.info("Subscribed to request updates on subject: {}", natsConfig.getRequestsUpdatedSubject());
         } catch (Exception e) {
             // Do not fail application startup if NATS is unavailable; only log the error.
             logger.warn("Failed to connect to NATS (continuing without NATS): {}", e.toString());
@@ -87,6 +94,24 @@ public class NatsClient {
                     logger.info("Received response for equipment request: {}", new String(response.getData(), StandardCharsets.UTF_8));
                 });
         logger.info("Published equipment request: {}", request);
+    }
+
+    /**
+     * Публикует сообщение в топик без request-reply (для Outbox worker).
+     */
+    public boolean publishToSubject(String subject, String jsonPayload) {
+        if (connection == null) {
+            logger.warn("NATS connection not available - skip publish to {}", subject);
+            return false;
+        }
+        try {
+            connection.publish(subject, jsonPayload.getBytes(StandardCharsets.UTF_8));
+            logger.debug("Published to {}: {} bytes", subject, jsonPayload.length());
+            return true;
+        } catch (Exception e) {
+            logger.error("Failed to publish to {}", subject, e);
+            return false;
+        }
     }
 
     /**
@@ -138,6 +163,34 @@ public class NatsClient {
     }
 
     /**
+     * Подписывается на события requests.updated и вызывает handler при получении сообщения.
+     */
+    public void setRequestsUpdatedHandler(Consumer<RequestUpdatedEvent> handler) {
+        this.requestsUpdatedHandler = handler;
+        new Thread(() -> {
+            try {
+                while (connection != null && connection.getStatus() == Connection.Status.CONNECTED
+                        && subscriptionRequestsUpdated != null) {
+                    Message msg = subscriptionRequestsUpdated.nextMessage(Duration.ofSeconds(1));
+                    if (msg == null || requestsUpdatedHandler == null) {
+                        continue;
+                    }
+                    try {
+                        String json = new String(msg.getData(), StandardCharsets.UTF_8);
+                        RequestUpdatedEvent event = objectMapper.readValue(json, RequestUpdatedEvent.class);
+                        requestsUpdatedHandler.accept(event);
+                    } catch (Exception e) {
+                        logger.error("Error processing request updated event", e);
+                    }
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                logger.error("Requests updated handler interrupted", e);
+            }
+        }, "nats-requests-updated").start();
+    }
+
+    /**
      * Проверяет, подключен ли NATS
      */
     public boolean isConnected() {
@@ -151,6 +204,9 @@ public class NatsClient {
         try {
             if (subscription != null) {
                 subscription.unsubscribe();
+            }
+            if (subscriptionRequestsUpdated != null) {
+                subscriptionRequestsUpdated.unsubscribe();
             }
             if (connection != null) {
                 connection.close();

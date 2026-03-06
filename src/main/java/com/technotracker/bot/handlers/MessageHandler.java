@@ -2,6 +2,7 @@ package com.technotracker.bot.handlers;
 
 import com.technotracker.bot.model.EquipmentRequest;
 import com.technotracker.bot.nats.NatsClient;
+import com.technotracker.bot.service.RequestService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
@@ -20,6 +21,7 @@ public class MessageHandler {
 
     private final TelegramLongPollingBot bot;
     private final NatsClient natsClient;
+    private final RequestService requestService;
 
     // Паттерны для парсинга запроса
     private static final Pattern REQUEST_PATTERN = Pattern.compile(
@@ -29,9 +31,10 @@ public class MessageHandler {
     private static final Pattern COMMENT_PATTERN = Pattern.compile(
             "(?i)комментарий[:\\.]?\\s*(.+)", Pattern.MULTILINE);
 
-    public MessageHandler(TelegramLongPollingBot bot, NatsClient natsClient) {
+    public MessageHandler(TelegramLongPollingBot bot, NatsClient natsClient, RequestService requestService) {
         this.bot = bot;
         this.natsClient = natsClient;
+        this.requestService = requestService;
     }
 
     public void handle(Update update) {
@@ -87,6 +90,7 @@ public class MessageHandler {
             }
 
             return new EquipmentRequest(
+                    null, // requestId задаётся при сохранении в БД
                     message.getFrom().getId(),
                     message.getFrom().getUserName() != null
                             ? message.getFrom().getUserName()
@@ -104,19 +108,27 @@ public class MessageHandler {
     }
 
     /**
-     * Обрабатывает запрос на оборудование: отправляет через NATS и подтверждает пользователю
+     * Обрабатывает запрос на оборудование: сохраняет в БД, затем отправляет в NATS (или через Outbox).
      */
     private void processEquipmentRequest(EquipmentRequest request, Long chatId) {
         try {
-            // Отправляем запрос в систему через NATS (если подключен)
+            long issuerId = request.getUserId();
+            String rawText = request.getEquipmentName()
+                    + (request.getLocation() != null ? " | " + request.getLocation() : "")
+                    + (request.getComment() != null ? " | " + request.getComment() : "");
+
+            // Сохраняем в БД и при включённом Outbox кладём событие в очередь
+            com.technotracker.bot.model.UserRequest saved = requestService.saveRequestAndEnqueueForNats(
+                    issuerId, rawText, request);
+
+            // Если Outbox выключен — отправляем в NATS сразу (request_id уже установлен в saveRequestAndEnqueueForNats)
             boolean natsConnected = natsClient.isConnected();
-            if (natsConnected) {
+            if (natsConnected && !requestService.isOutboxEnabled()) {
                 natsClient.publishEquipmentRequest(request);
-            } else {
-                logger.info("NATS not connected - running in demo mode. Request: {}", request);
+            } else if (!natsConnected) {
+                logger.info("NATS not connected - running in demo mode. Request saved with id: {}", saved.getId());
             }
 
-            // Подтверждаем пользователю
             String confirmation = String.format("""
                             ✅ Запрос успешно создан!
                             
@@ -133,11 +145,11 @@ public class MessageHandler {
                             : "",
                     natsConnected
                             ? "Ваш запрос отправлен администратору. Вы получите уведомление при изменении статуса."
-                            : "⚠️ Режим демонстрации: NATS не подключен. Запрос сохранен локально."
+                            : "⚠️ Режим демонстрации: NATS не подключен. Запрос сохранён в базе."
             );
 
             sendMessage(chatId, confirmation);
-            logger.info("Equipment request processed: {}", request);
+            logger.info("Equipment request processed and saved: id={}", saved.getId());
         } catch (Exception e) {
             logger.error("Error processing equipment request", e);
             sendMessage(chatId, "❌ Произошла ошибка при обработке запроса. Попробуйте позже.");

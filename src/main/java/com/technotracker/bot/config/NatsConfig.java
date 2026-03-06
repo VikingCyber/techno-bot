@@ -13,8 +13,9 @@ public class NatsConfig {
     private String requestSubject = "technotracker.requests";
 
     @Setter
-    @Getter
     private String requestCreatedSubject = "bot.requests.created";
+    @Setter
+    private String requestsUpdatedSubject = "requests.updated";
     @Setter
     @Getter
     private String requestGetSubject = "bot.requests.get";
@@ -62,5 +63,12 @@ public class NatsConfig {
         this.enabled = enabled;
     }
 
+    public String getRequestCreatedSubject() {
+        return requestCreatedSubject;
+    }
+
+    public String getRequestsUpdatedSubject() {
+        return requestsUpdatedSubject;
+    }
 }
 

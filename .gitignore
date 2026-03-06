@@ -48,6 +48,12 @@ application-local.properties
 application-*.properties
 !application.properties
 
+# H2 DB
+data/
+
+# PostgreSQL data (docker-compose volume)
+pgdata/
+
 
 
 

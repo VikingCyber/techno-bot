@@ -11,10 +11,39 @@ services:
       - NATS_URL=${NATS_URL:-nats://nats:4222}
       - NATS_SUBJECT=${NATS_SUBJECT:-technotracker.events}
       - NATS_REQUEST_SUBJECT=${NATS_REQUEST_SUBJECT:-technotracker.requests}
+      - NATS_REQUESTS_UPDATED_SUBJECT=${NATS_REQUESTS_UPDATED_SUBJECT:-requests.updated}
+      - OUTBOX_ENABLED=${OUTBOX_ENABLED:-true}
+      - SPRING_DATASOURCE_URL=${SPRING_DATASOURCE_URL:-jdbc:postgresql://postgres:5432/telegram_bot}
+      - SPRING_DATASOURCE_USERNAME=${SPRING_DATASOURCE_USERNAME:-telegram_bot}
+      - SPRING_DATASOURCE_PASSWORD=${SPRING_DATASOURCE_PASSWORD:-telegram_bot}
     volumes:
       - ./logs:/app/logs
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - technotracker-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: technotracker-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-telegram_bot}
+      - POSTGRES_USER=${POSTGRES_USER:-telegram_bot}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-telegram_bot}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER:-telegram_bot}\" -d \"$${POSTGRES_DB:-telegram_bot}\" -h 127.0.0.1 -p 5432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
     networks:
       - technotracker-network
 
@@ -26,6 +55,12 @@ services:
     ports:
       - "4222:4222"   # Client connections
       - "8222:8222"   # HTTP monitoring
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8222/varz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
     networks:
       - technotracker-network
 

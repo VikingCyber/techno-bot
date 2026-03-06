@@ -6,6 +6,7 @@ import com.technotracker.bot.handlers.MessageHandler;
 import com.technotracker.bot.handlers.CallbackHandler;
 import com.technotracker.bot.nats.NatsClient;
 import com.technotracker.bot.model.EquipmentStatus;
+import com.technotracker.bot.service.RequestService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -24,12 +25,12 @@ public class TechnoTrackerBot extends TelegramLongPollingBot {
     private final MessageHandler messageHandler;
     private final CallbackHandler callbackHandler;
 
-    public TechnoTrackerBot(BotConfig botConfig, NatsClient natsClient) {
+    public TechnoTrackerBot(BotConfig botConfig, NatsClient natsClient, RequestService requestService) {
         super(botConfig.getToken());
         this.botConfig = botConfig;
         this.natsClient = natsClient;
         this.commandHandler = new CommandHandler(this, natsClient);
-        this.messageHandler = new MessageHandler(this, natsClient);
+        this.messageHandler = new MessageHandler(this, natsClient, requestService);
         this.callbackHandler = new CallbackHandler(this, natsClient);
         
         // Подписываемся на обновления статуса оборудования
